@@ -105,8 +105,11 @@ function App() {
         try {
             setLoadingNodeId(nodeId);
 
-            // 调用 SiliconFlow API 生成关联词，传入自定义词数
-            const relatedWords = await generateRelatedWords(node.text, wordCount);
+            // 获取当前画布上已有的所有词汇，用于去重避让
+            const currentWords = nodes.map(n => n.text);
+
+            // 调用 SiliconFlow API 生成关联词，传入自定义词数和排除列表
+            const relatedWords = await generateRelatedWords(node.text, wordCount, currentWords);
 
             // 计算辐射状布局，传入现有节点进行避让
             const positions = calculateRadialLayout(node, relatedWords.length, nodes);
@@ -168,6 +171,19 @@ function App() {
 
         // 自动保存一次历史
         setTimeout(() => saveToHistory(nodes.find(n => n.level === 0)?.text || '更新颜色'), 500);
+    };
+
+    // 清空页面
+    const handleClearCanvas = () => {
+        if (nodes.length === 0) return;
+
+        // 如果想增加确认可以加 confirm
+        // if (!window.confirm('确定要清空当前页面吗？')) return;
+
+        setNodes([]);
+        setConnections([]);
+        setHasStarted(false);
+        setToast({ message: '画布已清空', type: 'info' });
     };
 
     // 亲和图聚类整合
@@ -247,6 +263,24 @@ function App() {
                     }}
                 >
                     {loadingNodeId === 'clustering' ? '聚类中...' : '🧠 智能聚拢'}
+                </button>
+
+                {/* 清空页面按钮 */}
+                <button
+                    className="glass"
+                    onClick={handleClearCanvas}
+                    disabled={!!loadingNodeId || nodes.length === 0}
+                    style={{
+                        padding: '10px 20px',
+                        borderRadius: '30px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        color: nodes.length > 0 ? '#ff4d4f' : '#ccc',
+                        opacity: loadingNodeId ? 0.6 : 1,
+                    }}
+                >
+                    🗑️ 清空页面
                 </button>
 
                 {/* 颜色选择器 */}

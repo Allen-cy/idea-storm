@@ -9,10 +9,15 @@ const MODEL_NAME = 'deepseek-ai/DeepSeek-V3';
  * 调用 SiliconFlow API 生成关联词
  * @param word 核心词语
  * @param count 需要生成的关联词数量 (默认 8)
+ * @param excludedWords 需要排除的词汇列表
  * @returns 关联词数组
  */
-export const generateRelatedWords = async (word: string, count: number = 8): Promise<string[]> => {
+export const generateRelatedWords = async (word: string, count: number = 8, excludedWords: string[] = []): Promise<string[]> => {
     try {
+        const excludePrompt = excludedWords.length > 0
+            ? `\n请避开以下词汇（不要生成这些词）：${excludedWords.join(', ')}`
+            : '';
+
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
@@ -24,7 +29,7 @@ export const generateRelatedWords = async (word: string, count: number = 8): Pro
                 messages: [
                     {
                         role: 'system',
-                        content: `你是一个创意发散助手。请根据用户提供的核心词，生成 ${count} 个高度相关的、具有启发性的关联词或短语。
+                        content: `你是一个创意发散助手。请根据用户提供的核心词，生成 ${count} 个高度相关的、具有启发性的关联词或短语。${excludePrompt}
 要求：
 1. 词语要简洁，通常在 2-4 个字之间。
 2. 关联方向要多样化，包含具体事物、抽象概念、行动建议等。
@@ -37,7 +42,7 @@ export const generateRelatedWords = async (word: string, count: number = 8): Pro
                         content: word
                     }
                 ],
-                temperature: 0.7,
+                temperature: 0.8, // 提高一点随机度，有助于减少重复
                 max_tokens: 500
             })
         });
@@ -51,12 +56,12 @@ export const generateRelatedWords = async (word: string, count: number = 8): Pro
         const content = data.choices[0].message.content.trim();
 
         // 解析逗号分隔的词语，并清理空字符和可能的换行
+        const excludedSet = new Set(excludedWords.map(w => w.toLowerCase()));
         const words = content.split(/[,，\n]/)
             .map((w: string) => w.trim())
-            .filter((w: string) => w.length > 0)
+            .filter((w: string) => w.length > 0 && !excludedSet.has(w.toLowerCase())) // 前端去重过滤
             .slice(0, count);
 
-        // 如果 AI 返回的数量不足，用本地备选方案补充（可选，此处暂不实现，假设 AI 足够可靠）
         return words;
     } catch (error) {
         console.error('SiliconFlow API Error:', error);
