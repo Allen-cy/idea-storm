@@ -46,6 +46,17 @@ function App() {
         localStorage.setItem('app_history', JSON.stringify(newHistory));
     };
 
+    // 清空历史记录
+    const handleClearHistory = () => {
+        if (history.length === 0) return;
+
+        if (window.confirm('确定要清空所有历史记录吗？此操作不可撤销。')) {
+            setHistory([]);
+            localStorage.removeItem('app_history');
+            setToast({ message: '历史记录已清空', type: 'info' });
+        }
+    };
+
     // 获取选中的节点
     const getSelectedNode = (): Node | null => {
         return nodes.find((n) => n.isSelected) || null;
@@ -449,7 +460,7 @@ function App() {
                 loadingNodeId={loadingNodeId}
             />
             <InputBox onSubmit={handleInputSubmit} isAtBottom={hasStarted} />
-            <HistoryPanel history={history} onRestore={handleRestoreHistory} />
+            <HistoryPanel history={history} onRestore={handleRestoreHistory} onClear={handleClearHistory} />
 
             {/* 顶层工具栏 */}
             <div

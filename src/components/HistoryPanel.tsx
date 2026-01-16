@@ -4,9 +4,10 @@ import { HistoryEntry } from '../types';
 interface HistoryPanelProps {
     history: HistoryEntry[];
     onRestore: (entry: HistoryEntry) => void;
+    onClear: () => void;
 }
 
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onRestore }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onRestore, onClear }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const formatTime = (timestamp: number) => {
@@ -61,16 +62,35 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onRestore }) => {
                         animation: 'fadeIn 0.3s ease-out',
                     }}
                 >
-                    <h3
-                        style={{
-                            fontSize: '16px',
-                            fontWeight: 'bold',
-                            marginBottom: '16px',
-                            color: 'var(--color-black)',
-                        }}
-                    >
-                        历史记录
-                    </h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3
+                            style={{
+                                fontSize: '16px',
+                                fontWeight: 'bold',
+                                color: 'var(--color-black)',
+                                margin: 0,
+                            }}
+                        >
+                            历史记录
+                        </h3>
+                        {history.length > 0 && (
+                            <button
+                                onClick={onClear}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#ff4d4f',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    padding: '4px 8px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(255, 77, 79, 0.1)',
+                                }}
+                            >
+                                🗑️ 清空
+                            </button>
+                        )}
+                    </div>
 
                     {history.length === 0 ? (
                         <p style={{ color: 'var(--color-light-gray)', fontSize: '14px' }}>
