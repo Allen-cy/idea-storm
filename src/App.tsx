@@ -3,8 +3,8 @@ import Canvas from './components/Canvas';
 import InputBox from './components/InputBox';
 import HistoryPanel from './components/HistoryPanel';
 import Toast from './components/Toast';
-import { Node, Connection, HistoryEntry } from './types';
-import { generateRelatedWords, clusterNodes } from './utils/gemini';
+import { Node, Connection, HistoryEntry, Frame } from './types';
+import { generateRelatedWords, clusterNodes, extractNodesFromText, suggestFrameTitle } from './utils/gemini';
 import { calculateRadialLayout, calculateClusteredLayout } from './utils/layout';
 import './index.css';
 
@@ -15,6 +15,8 @@ function App() {
     const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null);
     const [hasStarted, setHasStarted] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+    const [frames, setFrames] = useState<Frame[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const [wordCount, setWordCount] = useState(8);
 
@@ -156,6 +158,18 @@ function App() {
         );
     };
 
+    // 处理批量选择
+    const handleSelectionChange = (selectedIds: string[], isAdditive: boolean) => {
+        setNodes(
+            nodes.map((n) => ({
+                ...n,
+                isSelected: isAdditive
+                    ? (selectedIds.includes(n.id) ? true : n.isSelected)
+                    : selectedIds.includes(n.id)
+            }))
+        );
+    };
+
     // 恢复历史记录
     const handleRestoreHistory = (entry: HistoryEntry) => {
         setNodes(entry.nodes);
@@ -170,7 +184,30 @@ function App() {
         setNodes(nodes.map(n => n.id === selectedNode.id ? { ...n, fillColor: color } : n));
 
         // 自动保存一次历史
-        setTimeout(() => saveToHistory(nodes.find(n => n.level === 0)?.text || '更新颜色'), 500);
+        setTimeout(() => saveToHistory('更新颜色'), 500);
+    };
+
+    // 切换节点类型
+    const handleToggleNodeType = () => {
+        const selectedNode = getSelectedNode();
+        if (!selectedNode) return;
+
+        const newType = selectedNode.type === 'note' ? 'default' : 'note';
+        setNodes(nodes.map(n => n.id === selectedNode.id ? {
+            ...n,
+            type: newType,
+            width: newType === 'note' ? 200 : undefined,
+            height: newType === 'note' ? 120 : undefined,
+            content: newType === 'note' ? n.text : undefined,
+        } : n));
+
+        setToast({ message: `节点已转换为 ${newType === 'note' ? '笔记' : '词汇'}`, type: 'info' });
+        setTimeout(() => saveToHistory('切换节点类型'), 500);
+    };
+
+    // 更新笔记内容
+    const handleUpdateNodeContent = (nodeId: string, content: string) => {
+        setNodes(nodes.map(n => n.id === nodeId ? { ...n, content } : n));
     };
 
     // 清空页面
@@ -186,7 +223,87 @@ function App() {
         setToast({ message: '画布已清空', type: 'info' });
     };
 
-    // 亲和图聚类整合
+    // 创建边框/组
+    const handleCreateFrame = () => {
+        const selectedNodes = nodes.filter(n => n.isSelected);
+        if (selectedNodes.length === 0) {
+            setToast({ message: '请先选择要成组的节点', type: 'info' });
+            return;
+        }
+
+        const minX = Math.min(...selectedNodes.map(n => n.x)) - 40;
+        const minY = Math.min(...selectedNodes.map(n => n.y)) - 40;
+        const maxX = Math.max(...selectedNodes.map(n => n.x)) + 40;
+        const maxY = Math.max(...selectedNodes.map(n => n.y)) + 40;
+
+        const newFrame: Frame = {
+            id: `frame-${Date.now()}`,
+            title: '正在总结...',
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY,
+            nodeIds: selectedNodes.map(n => n.id),
+        };
+
+        setFrames([...frames, newFrame]);
+
+        // 异步获取 AI 建议的标题
+        suggestFrameTitle(selectedNodes.map(n => n.text)).then((suggestedTitle: string) => {
+            setFrames(prev => prev.map(f => f.id === newFrame.id ? { ...f, title: suggestedTitle } : f));
+        });
+
+        setToast({ message: '已创建分组', type: 'success' });
+        setTimeout(() => saveToHistory('创建分组'), 500);
+    };
+
+    // 处理分组重命名
+    const handleFrameRename = (frameId: string, name: string) => {
+        setFrames(frames.map(f => f.id === frameId ? { ...f, title: name } : f));
+        setTimeout(() => saveToHistory('重命名分组'), 500);
+    };
+
+    // 从笔记中提取创意点
+    const handleExtractFromNote = async (nodeId: string) => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node || !node.content || loadingNodeId) return;
+
+        try {
+            setLoadingNodeId(nodeId);
+            setToast({ message: '正在提取核心观点...', type: 'info' });
+
+            const extractedWords = await extractNodesFromText(node.content);
+
+            // 计算布局 (复用辐射布局)
+            const positions = calculateRadialLayout(node, extractedWords.length, nodes);
+
+            const newNodes: Node[] = extractedWords.map((word: string, index: number) => ({
+                id: `extract-${Date.now()}-${index}`,
+                text: word,
+                x: positions[index].x,
+                y: positions[index].y,
+                isSelected: false,
+                level: node.level + 1,
+                parentId: node.id,
+            }));
+
+            const newConnections: Connection[] = newNodes.map((nn) => ({
+                from: node.id,
+                to: nn.id,
+            }));
+
+            setNodes([...nodes, ...newNodes]);
+            setConnections([...connections, ...newConnections]);
+            setToast({ message: `成功提取 ${extractedWords.length} 个观点`, type: 'success' });
+            setLoadingNodeId(null);
+            setTimeout(() => saveToHistory('从笔记提取'), 500);
+        } catch (error) {
+            setLoadingNodeId(null);
+            setToast({ message: '提取失败', type: 'error' });
+        }
+    };
+
+    // 统一处理聚类
     const handleAffinityGrouping = async () => {
         if (nodes.length <= 1 || loadingNodeId) return;
 
@@ -225,6 +342,95 @@ function App() {
         '#FFE0B2', // 淡橙
     ];
 
+    // 处理手动连线
+    const handleManualConnect = (fromId: string, toId: string) => {
+        // 检查是否已经存在连接
+        const exists = connections.some(c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
+        if (exists) return;
+
+        const newConnection: Connection = {
+            id: `manual-${Date.now()}`,
+            from: fromId,
+            to: toId,
+            isManual: true,
+            label: '关联', // 默认标签
+        };
+
+        setConnections([...connections, newConnection]);
+        setToast({ message: '创建了手动连接', type: 'success' });
+
+        // 保存历史
+        setTimeout(() => saveToHistory('创建手动连线'), 500);
+    };
+
+    // 处理连线右键点击 (编辑标签)
+    const handleConnectionRightClick = (connId: string) => {
+        const conn = connections.find(c => c.id === connId || `${c.from}-${c.to}` === connId);
+        if (!conn) return;
+
+        const newLabel = prompt('请输入连线关系描述 (如: 包含, 因果, 竞争):', conn.label || '');
+        if (newLabel === null) return; // 取消
+
+        setConnections(connections.map(c => {
+            if (c.id === connId || `${c.from}-${c.to}` === connId) {
+                return { ...c, label: newLabel };
+            }
+            return c;
+        }));
+
+        setToast({ message: '连线标签已更新', type: 'success' });
+        setTimeout(() => saveToHistory('更新连线标签'), 500);
+    };
+
+    // 导出为 JSON
+    const handleExportJSON = () => {
+        const data = {
+            nodes: nodes.map(({ id, text, x, y, type, content, level, parentId, fillColor }) => ({ id, text, x, y, type, content, level, parentId, fillColor })),
+            connections,
+            frames,
+            version: '2.0'
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `brainstorm-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setToast({ message: 'JSON 导出成功', type: 'success' });
+    };
+
+    // 导出为 Markdown 大纲
+    const handleExportMarkdown = () => {
+        const buildTree = (parentId?: string, level: number = 0): string => {
+            const children = nodes.filter(n => n.parentId === parentId);
+            return children.map(child => {
+                const indent = '  '.repeat(level);
+                let content = `${indent}- ${child.text}`;
+                if (child.content) {
+                    content += `\n${indent}  > ${child.content.replace(/\n/g, `\n${indent}  > `)}`;
+                }
+                const subTree = buildTree(child.id, level + 1);
+                return content + (subTree ? `\n${subTree}` : '');
+            }).join('\n');
+        };
+
+        const markdown = buildTree();
+        const blob = new Blob([markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `brainstorm-${Date.now()}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setToast({ message: 'Markdown 导出成功', type: 'success' });
+    };
+
+    // 导出图片
+    const handleExportPNG = () => {
+        setToast({ message: '图片导出功能建议使用系统截图，以保持最佳质量', type: 'info' });
+    };
+
     return (
         <div style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
             <Canvas
@@ -232,6 +438,14 @@ function App() {
                 connections={connections}
                 onNodeClick={handleNodeClick}
                 onNodeRightClick={handleNodeRightClick}
+                onConnectionRightClick={handleConnectionRightClick}
+                onManualConnect={handleManualConnect}
+                onNodeContentUpdate={handleUpdateNodeContent}
+                onNodeExtract={handleExtractFromNote}
+                frames={frames}
+                onFrameRename={handleFrameRename}
+                onSelectionChange={handleSelectionChange}
+                searchQuery={searchQuery}
                 loadingNodeId={loadingNodeId}
             />
             <InputBox onSubmit={handleInputSubmit} isAtBottom={hasStarted} />
@@ -265,6 +479,68 @@ function App() {
                     {loadingNodeId === 'clustering' ? '聚类中...' : '🧠 智能聚拢'}
                 </button>
 
+                {/* 搜索框 */}
+                <div
+                    className="glass"
+                    style={{
+                        padding: '5px 15px',
+                        borderRadius: '30px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    }}
+                >
+                    <span style={{ fontSize: '16px' }}>🔍</span>
+                    <input
+                        type="text"
+                        placeholder="搜索节点..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{
+                            border: 'none',
+                            background: 'none',
+                            outline: 'none',
+                            fontSize: '14px',
+                            width: '120px',
+                        }}
+                    />
+                </div>
+
+                {/* 导出按钮组 */}
+                <div
+                    className="glass"
+                    style={{
+                        padding: '5px 15px',
+                        borderRadius: '30px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                    }}
+                >
+                    <button
+                        onClick={handleExportJSON}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}
+                        title="导出 JSON"
+                    >
+                        💾
+                    </button>
+                    <button
+                        onClick={handleExportMarkdown}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}
+                        title="导出 Markdown"
+                    >
+                        📝
+                    </button>
+                    <button
+                        onClick={handleExportPNG}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}
+                        title="导出图片"
+                    >
+                        🖼️
+                    </button>
+                </div>
+
                 {/* 清空页面按钮 */}
                 <button
                     className="glass"
@@ -292,9 +568,37 @@ function App() {
                             borderRadius: '30px',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '10px',
+                            gap: '15px',
                         }}
                     >
+                        <button
+                            onClick={handleToggleNodeType}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '18px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                            }}
+                            title={getSelectedNode()?.type === 'note' ? "转为普通节点" : "转为笔记节点"}
+                        >
+                            {getSelectedNode()?.type === 'note' ? '📝' : '📄'}
+                        </button>
+                        <button
+                            onClick={handleCreateFrame}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '18px',
+                            }}
+                            title="将选定节点成组"
+                        >
+                            📦
+                        </button>
+                        <div style={{ height: '20px', width: '1px', backgroundColor: 'rgba(0,0,0,0.1)' }} />
                         <span style={{ fontSize: '12px', opacity: 0.6 }}>节点填充</span>
                         <div style={{ display: 'flex', gap: '5px' }}>
                             {COLORS.map(color => (
@@ -369,6 +673,24 @@ function App() {
                         +
                     </button>
                 </div>
+            </div>
+
+            {/* 版本信息 */}
+            <div
+                style={{
+                    position: 'absolute',
+                    bottom: '10px',
+                    right: '10px',
+                    fontSize: '10px',
+                    color: 'var(--color-gray)',
+                    opacity: 0.5,
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                    zIndex: 5,
+                    textAlign: 'right',
+                }}
+            >
+                v2.0.0 | Updated: 2026-01-16 13:33
             </div>
 
             {/* 通知组件 */}

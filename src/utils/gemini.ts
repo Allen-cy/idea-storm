@@ -130,3 +130,101 @@ export const clusterNodes = async (nodes: Node[]): Promise<Map<string, string[]>
         throw error;
     }
 };
+
+/**
+ * 从长文本中提取核心创意点
+ * @param text 笔记内容
+ * @param count 提取数量
+ * @returns 提取的关键词数组
+ */
+export const extractNodesFromText = async (text: string, count: number = 5): Promise<string[]> => {
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SILICONFLOW_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: MODEL_NAME,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `你是一个创意提取专家。请从用户提供的长文本中提取 ${count} 个独立的核心观点、关键词或创意点。
+要求：
+1. 提取的点要简洁有力，通常在 2-6 个字之间。
+2. 尽量覆盖文本的不同维度。
+3. 请直接返回词语列表，用半角逗号(,)分隔，不要有任何多余的解释文字。`
+                    },
+                    {
+                        role: 'user',
+                        content: text
+                    }
+                ],
+                temperature: 0.5,
+                max_tokens: 500
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`API 请求失败: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices[0].message.content.trim();
+
+        return content.split(/[,，\n]/)
+            .map((w: string) => w.trim())
+            .filter((w: string) => w.length > 0)
+            .slice(0, count);
+    } catch (error) {
+        console.error('Extraction Error:', error);
+        throw error;
+    }
+};
+
+/**
+ * 根据节点内容建议分组名称
+ * @param nodeTexts 节点文本列表
+ * @returns 建议的分组名称
+ */
+export const suggestFrameTitle = async (nodeTexts: string[]): Promise<string> => {
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SILICONFLOW_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: MODEL_NAME,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `你是一个逻辑归纳专家。请为用户提供的一组词语建议一个统一的分类名称或主题名称。
+要求：
+1. 名称要极其简洁，通常在 2-4 个字之间。
+2. 不要包含“分类”、“主题”等词汇。
+3. 直接返回名称，不要有任何解释。`
+                    },
+                    {
+                        role: 'user',
+                        content: nodeTexts.join(', ')
+                    }
+                ],
+                temperature: 0.3,
+                max_tokens: 100
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`API 请求失败: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.choices[0].message.content.trim();
+    } catch (error) {
+        console.error('Title Suggestion Error:', error);
+        return '新建分组';
+    }
+};
