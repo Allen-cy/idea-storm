@@ -2,10 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 
 interface InputBoxProps {
     onSubmit: (text: string) => void;
-    isAtBottom: boolean;
 }
 
-const InputBox: React.FC<InputBoxProps> = ({ onSubmit, isAtBottom }) => {
+const InputBox: React.FC<InputBoxProps> = ({ onSubmit }) => {
     const [text, setText] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -28,9 +27,12 @@ const InputBox: React.FC<InputBoxProps> = ({ onSubmit, isAtBottom }) => {
                 position: 'fixed',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                transition: 'bottom 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-                bottom: isAtBottom ? '40px' : '50%',
+                bottom: '40px',
                 zIndex: 1000,
+                width: '100%',
+                maxWidth: '600px',
+                padding: '0 20px',
+                boxSizing: 'border-box',
             }}
         >
             <form onSubmit={handleSubmit}>
@@ -42,8 +44,9 @@ const InputBox: React.FC<InputBoxProps> = ({ onSubmit, isAtBottom }) => {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '12px',
-                        minWidth: '400px',
+                        width: '100%',
                         border: '2px solid var(--color-black)',
+                        boxSizing: 'border-box',
                     }}
                 >
                     <input
@@ -57,6 +60,8 @@ const InputBox: React.FC<InputBoxProps> = ({ onSubmit, isAtBottom }) => {
                             fontSize: '16px',
                             color: 'var(--color-black)',
                             fontWeight: '500',
+                            width: '100%',
+                            minWidth: '0',
                         }}
                     />
                     <button
@@ -72,6 +77,7 @@ const InputBox: React.FC<InputBoxProps> = ({ onSubmit, isAtBottom }) => {
                             justifyContent: 'center',
                             fontSize: '20px',
                             fontWeight: 'bold',
+                            flexShrink: 0,
                         }}
                     >
                         →

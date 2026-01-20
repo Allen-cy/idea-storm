@@ -13,7 +13,6 @@ function App() {
     const [connections, setConnections] = useState<Connection[]>([]);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [loadingNodeId, setLoadingNodeId] = useState<string | null>(null);
-    const [hasStarted, setHasStarted] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
     const [frames, setFrames] = useState<Frame[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -73,8 +72,6 @@ function App() {
             // 无选中节点，作为新的独立中心词
             addCenterNode(text);
         }
-
-        setHasStarted(true);
     };
 
     // 添加中心节点
@@ -230,7 +227,6 @@ function App() {
 
         setNodes([]);
         setConnections([]);
-        setHasStarted(false);
         setToast({ message: '画布已清空', type: 'info' });
     };
 
@@ -459,7 +455,7 @@ function App() {
                 searchQuery={searchQuery}
                 loadingNodeId={loadingNodeId}
             />
-            <InputBox onSubmit={handleInputSubmit} isAtBottom={hasStarted} />
+            <InputBox onSubmit={handleInputSubmit} />
             <HistoryPanel history={history} onRestore={handleRestoreHistory} onClear={handleClearHistory} />
 
             {/* 顶层工具栏 */}
